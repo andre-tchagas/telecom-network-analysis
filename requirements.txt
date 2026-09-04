@@ -1,0 +1,21 @@
+# Dependencias diretas do projeto.
+# Ambiente de referencia: Python 3.13.5 (Windows).
+# Instalacao: pip install -r requirements.txt
+
+# Manipulacao e analise de dados
+pandas==3.0.5
+numpy==2.5.2
+
+# Visualizacao
+plotly==7.0.0
+
+# Dashboard
+streamlit==1.63.0
+
+# Notebook de exploracao
+jupyter==1.1.1
+
+# Testes
+pytest==9.1.1
+
+# Banco de dados: sqlite3 faz parte da biblioteca padrao do Python (sem dependencia externa)

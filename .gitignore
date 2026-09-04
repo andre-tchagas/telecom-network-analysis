@@ -1,4 +1,40 @@
-__pycache__/
-*.pyc
+# Ambiente virtual
+.venv/
 venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Banco de dados gerado pelo pipeline (reproduzivel via run_pipeline.py)
+database/*.db
+
+# Dados intermediarios gerados pelo pipeline
+data/processed/*
+!data/processed/.gitkeep
+
+# Dataset original compactado (os CSVs extraidos estao versionados em data/raw/)
+datasets/
+
+# Figuras geradas
+reports/figures/*
+!reports/figures/.gitkeep
+
+# Segredos e ambiente local
 .env
+*.key
+secrets.*
+
+# Sistema operacional / editores
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+.idea/
+
+# Especificacao do projeto (uso local, nao publicado)
+CLAUDE.md
