@@ -4,7 +4,7 @@ Ponto de entrada unico do pipeline.
 Executa as etapas na ordem em que dependem umas das outras:
 
     data/raw  ->  carga  ->  validacao  ->  limpeza  ->  transformacao
-              ->  data/processed  ->  [SQLite]  ->  [analise]  ->  [visualizacao]
+              ->  data/processed  ->  SQLite  ->  [analise]  ->  [visualizacao]
 
 As etapas entre colchetes serao adicionadas nos proximos checkpoints.
 Manter um unico ponto de entrada e' o que torna o projeto reproduzivel:
@@ -22,6 +22,7 @@ import sys
 from src.cleaning import clean_raw_data, validate_clean_data
 from src.config import setup_logging
 from src.data_loader import load_raw_data, validate_raw_data
+from src.database import construir_banco
 from src.transformation import build_star_schema, save_processed, validate_star_schema
 
 
@@ -46,6 +47,9 @@ def main() -> int:
 
         # Etapa 5 -- Persistencia do estagio intermediario
         save_processed(star)
+
+        # Etapa 6 -- Cria o banco SQLite e carrega as tabelas
+        construir_banco()
 
     except (FileNotFoundError, ValueError) as exc:
         # Erros esperados e acionaveis: reportamos de forma limpa, sem traceback.
