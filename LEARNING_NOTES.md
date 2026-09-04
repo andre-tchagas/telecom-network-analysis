@@ -320,3 +320,148 @@ Sim, quatro. A mais importante é a ausência de tempo: sem data não há como
 medir tendência, sazonalidade ou tempo de reparo, então qualquer afirmação
 sobre "a rede está piorando" seria inventada. E as categorias são anonimizadas,
 então nenhuma conclusão causal é possível — só padrão estatístico.
+
+---
+
+## Checkpoint 3 — Cleaning e Transformation
+
+Entregáveis: `src/cleaning.py`, `src/transformation.py`, 28 testes novos.
+O pipeline agora vai de `data/raw` até `data/processed` em 5 etapas.
+
+### Decisão 12 — Um módulo de limpeza deliberadamente pequeno
+
+O dataset chega sem nulos, sem duplicatas e sem inconsistências. Escrever
+tratamento de valores ausentes aqui produziria código que nunca executa.
+
+`cleaning.py` faz as duas coisas que este dataset realmente precisa:
+
+1. **recorte de universo** — filtrar para os 7.381 incidentes rotulados;
+2. **conversão de categorias** — `"location 118"` → `118`.
+
+Ambas são decisões de negócio, e é por isso que vivem aqui e não no loader.
+
+### Decisão 13 — Converter categorias de texto para inteiro
+
+O valor útil já é o número; o prefixo é constante em todas as linhas.
+
+Três ganhos: memória (7.381 cópias da palavra "location" não são gratuitas),
+chave estrangeira numérica no SQLite, e **ordenação correta** — em texto,
+`"location 9"` vem depois de `"location 100"`.
+
+**A armadilha:** a coluna se chama `log_feature`, mas os valores usam o prefixo
+`"feature"`. Confirmei isso no dado real antes de escrever o código; assumir o
+nome da coluna teria quebrado a conversão. Há um teste dedicado a isso.
+
+**Por que validar o formato antes de converter:** a forma ingênua
+(`str.extract` com regex) devolveria `NaN` para `"location A"` e o incidente
+sumiria dos JOINs sem nenhum aviso. `extract_category_id()` valida o formato
+com `str.fullmatch` e levanta erro com exemplos do problema. É a diferença
+entre falhar alto e produzir número errado em silêncio.
+
+### Decisão 14 — Star schema com 9 tabelas
+
+```
+                    locations        severity_types
+                         \               /
+    event_types --- [incident_events] --- INCIDENTS --- [incident_resources] --- resource_types
+                                              |
+                                    [incident_log_features]
+                                              |
+                                         log_features
+```
+
+| Tipo | Tabelas | Linhas |
+|---|---|---:|
+| Fato | `incidents` | 7.381 |
+| Dimensões | `locations` / `event_types` / `log_features` / `resource_types` / `severity_types` | 929 / 49 / 331 / 10 / 5 |
+| Pontes | `incident_events` / `incident_log_features` / `incident_resources` | 12.468 / 23.851 / 8.460 |
+
+**Por que `severity_type` fica no fato e não numa ponte:** ele é 1:1 com o
+incidente. Uma ponte com exatamente uma linha por incidente seria um JOIN a
+mais sem nenhum ganho de expressividade. Ponte só se justifica em relação 1:N.
+
+**Por que dimensões tão finas.** Elas carregam apenas `id` e rótulo, porque as
+categorias do dataset são anonimizadas. Ainda assim se justificam: com
+`PRAGMA foreign_keys = ON`, o SQLite passa a **rejeitar** um incidente que
+referencie uma categoria inexistente. O domínio válido deixa de ser convenção
+e vira restrição verificada pelo banco.
+
+Sendo honesto sobre o limite: num projeto com dado real, `locations` teria
+região, capacidade e fabricante do equipamento. A estrutura seria a mesma —
+o que falta é informação na fonte, não modelagem.
+
+### Decisão 15 — Agregados calculados em SQL, não materializados no fato
+
+Volume total de log, número de eventos e de recursos por incidente **não** são
+colunas de `incidents`. São calculados nas consultas com `JOIN` + `GROUP BY`.
+
+**Alternativa descartada:** pré-calcular como colunas. Deixaria o dashboard
+mais rápido e as queries mais curtas, mas cria dado redundante que pode
+dessincronizar das pontes — e o projeto existe justamente para demonstrar SQL.
+Com 7.381 incidentes, o custo de recalcular é irrelevante.
+
+Este é o *trade-off* clássico normalização × desnormalização, e a escolha
+depende do volume. Em um data warehouse com bilhões de linhas, a resposta
+provavelmente seria a oposta.
+
+### Decisão 16 — Parquet em `data/processed/`
+
+| | Parquet | CSV |
+|---|---|---|
+| Tipos | preservados (`int8` volta `int8`) | perdidos (`int8` → `int64`) |
+| Tamanho (`incidents`) | 61,0 KB | 104,5 KB |
+| Legível em editor | não | sim |
+
+As 9 tabelas ocupam 299 KB no total. O custo de não ser legível à mão é
+aceitável porque `data/processed/` é artefato intermediário, gerado e
+descartável — a fonte inspecionável continua sendo `data/raw/`, em CSV.
+
+### Decisão 17 — Duas validações diferentes, em camadas diferentes
+
+- `validate_raw_data()` pergunta: **"o dado que recebi está íntegro?"**
+- `validate_clean_data()` / `validate_star_schema()` perguntam:
+  **"eu estraguei o dado?"**
+
+São perguntas distintas e falham por motivos distintos. A segunda checa
+integridade referencial do modelo **antes** da carga no banco: o SQLite também
+verificaria via `FOREIGN KEY`, mas falhar aqui produz mensagem apontando a
+tabela e a quantidade de órfãos, em vez de um `IntegrityError` genérico no meio
+de um INSERT em lote.
+
+---
+
+## Perguntas de entrevista — Checkpoint 3
+
+**Por que converter `"location 118"` para `118`?**
+O prefixo é constante e não informa nada. Converter economiza memória, permite
+chave estrangeira numérica e corrige a ordenação — em texto, `"location 9"`
+vem depois de `"location 100"`.
+
+**Qual a diferença entre a tabela fato e as tabelas dimensão?**
+O fato guarda os eventos que se quer medir (um incidente, com sua gravidade) e
+as chaves para o contexto. As dimensões descrevem esse contexto (que localidade,
+que tipo de evento). O fato cresce com o tempo; as dimensões são relativamente
+estáveis.
+
+**Por que `severity_type` está no fato e `event_type` numa ponte?**
+Porque a cardinalidade é diferente. `severity_type` é 1:1 — cada incidente tem
+exatamente um. `event_type` é 1:N — um incidente pode ter até 9. Relação 1:N
+não cabe em coluna sem duplicar linhas do fato ou criar colunas vazias.
+
+**Por que não guardar o volume total de log como coluna de `incidents`?**
+Porque é dado derivado. Ele pode ser recalculado a qualquer momento a partir da
+ponte, e mantê-lo como coluna cria a possibilidade de ele divergir da fonte.
+Em um volume muito maior, eu reconsideraria e materializaria numa VIEW ou
+tabela agregada — aí o custo do recálculo passaria a importar.
+
+**Por que Parquet em vez de CSV?**
+Parquet é colunar, comprimido e preserva o schema. CSV é texto: todo tipo se
+perde na escrita e precisa ser redeclarado na leitura. Uso CSV onde a
+inspeção manual importa (`data/raw`) e Parquet onde importa fidelidade de tipo
+e tamanho (`data/processed`).
+
+**Por que validar de novo, se o loader já validou?**
+São perguntas diferentes. O loader valida a **fonte**; a validação da limpeza
+valida o **meu próprio código**. Um bug na conversão de categorias passaria
+tranquilamente pela validação do loader — e é exatamente esse bug que a segunda
+camada pega.
