@@ -188,3 +188,135 @@ ler em *chunks* ou migrar para PyArrow/Polars, carregar no banco em lotes, e
 mover as agregações para SQL em vez de fazê-las em memória. Acima disso, trocar
 SQLite por PostgreSQL — não por limite de tamanho, mas por concorrência de
 escrita e por planos de execução melhores em agregação.
+
+---
+
+## Checkpoint 2 — Exploração
+
+Entregável: `notebooks/exploratory_analysis.ipynb`, 44 células (20 de código),
+versionado **com as saídas executadas**.
+
+### Decisão 10 — Notebook sem gráficos
+
+O GitHub não renderiza saídas de Plotly no preview de `.ipynb`. Um notebook de
+portfólio cujos gráficos aparecem como blocos vazios comunica menos do que um
+notebook honestamente tabular.
+
+**Escolha:** a exploração fica com tabelas e narrativa — que renderizam
+perfeitamente no GitHub. As visualizações vão para `reports/figures/` e para o
+dashboard Streamlit, no Checkpoint 5, onde de fato aparecem.
+
+Isso também reflete a divisão real de propósito: exploração serve para *entender
+estrutura e números*; visualização serve para *comunicar um resultado já
+entendido*.
+
+### Decisão 11 — Notebook versionado com saídas
+
+O padrão em times de engenharia é limpar as saídas antes de commitar (evita
+conflito de merge e inchaço do diff). Aqui a escolha é a oposta.
+
+**Motivo:** o público deste repositório é um recrutador que vai abrir o notebook
+no navegador do GitHub e não vai executá-lo. Notebook sem saída é uma página em
+branco. O custo — diffs grandes — é irrelevante em um projeto de um
+desenvolvedor só, sem merges concorrentes.
+
+**Como é gerado:** o notebook é executado de ponta a ponta com
+`jupyter nbconvert --to notebook --execute --inplace`. Isso garante que as
+saídas correspondam ao código commitado e que a ordem de execução seja linear —
+o contrário do notebook editado à mão, em que a célula 3 pode ter rodado depois
+da célula 12.
+
+### Achados do Checkpoint 2
+
+**1. Qualidade: dado já tratado.** Zero nulos, zero duplicatas, integridade
+referencial perfeita. Confirma que `cleaning.py` será pequeno.
+
+**2. `severity_type` carrega sinal real sobre a gravidade.** Cruzando as duas
+colunas (taxa média de graves = 9,84%):
+
+| `severity_type` | incidentes | % graves |
+|---|---:|---:|
+| 1 | 3.375 | **14,2%** |
+| 2 | 3.591 | 6,9% |
+| 4 | 388 | **0,0%** |
+| 5 | 23 | 0,0% |
+| 3 | 4 | 0,0% |
+
+O caso do tipo 4 é o mais forte: **388 incidentes, nenhum grave**. Na taxa base
+esperaríamos ~38. Zero em 388 não é acaso de amostra pequena — é sinal.
+
+Leitura operacional: o tipo de alarme emitido pelo log tem valor preditivo.
+Alarmes tipo 1 merecem prioridade maior que tipo 2; tipos 3/4/5 aparentemente
+nunca escalam para falha grave.
+
+**3. Concentração das categorias determina o gráfico adequado.**
+
+| variável | categorias | top 10 cobre |
+|---|---:|---:|
+| `resource_type` | 10 | 100% |
+| `event_type` | 49 | 92,4% |
+| `log_feature` | 331 | **45,4%** |
+
+Consequência: um gráfico "top 10" funciona para evento e recurso, mas para
+`log_feature` **esconderia mais da metade dos dados**. Essa variável precisa ser
+tratada por agregação (soma de volume por incidente), não por ranking.
+
+**4. `volume` é fortemente assimétrico.** Assimetria (*skew*) = 10,05; média
+9,85 contra mediana 2; máximo 877 contra p95 de 42; 81% das linhas com volume
+≤ 10. Portanto: descrever com **mediana**, não média, e usar **escala
+logarítmica** nos gráficos.
+
+**5. O ranking de localidades exige corte mínimo.** Sem corte, 14 localidades
+têm taxa de 100% de gravidade — 10 delas com **um único incidente**, e nenhuma
+com 5 ou mais. Com corte de 20 incidentes sobram 102 das 929, e o topo passa a
+ser `location 1100` com 33 graves em 45 (73,3%), mais de 7× a taxa base.
+
+O corte de 20 é uma **decisão analítica declarada**, não um detalhe de
+implementação. Alternativa mais correta estatisticamente — *shrinkage*, puxar
+cada taxa em direção à média geral proporcionalmente ao tamanho da amostra —
+fica registrada como Future Improvement por ser difícil de explicar num README.
+
+### Limitações registradas
+
+1. **Sem dimensão temporal** — nenhum arquivo tem data/hora.
+2. **Categorias anonimizadas** — sabemos que `resource_type 8` é o mais
+   frequente, mas não o que ele é. Conclusões ficam no nível de padrão
+   estatístico, nunca de causa física.
+3. **60% dos incidentes sem rótulo** — descartados.
+4. **Sem duração, custo ou clientes afetados** — impossível priorizar por
+   impacto financeiro.
+
+---
+
+## Perguntas de entrevista — Checkpoint 2
+
+**O que é cardinalidade e por que ela importa aqui?**
+É a quantidade de valores distintos de uma coluna. Importa porque muda o
+tratamento: `resource_type` tem 10 categorias e cabe inteiro num gráfico de
+barras; `log_feature` tem 331 e precisa de agregação, porque qualquer top-N
+esconderia a maior parte da distribuição.
+
+**Por que a média de `volume` não descreve bem os dados?**
+Porque a distribuição é fortemente assimétrica à direita — assimetria 10,05.
+A média (9,85) é quase 5× a mediana (2), puxada por uma minoria de valores
+extremos até 877. A mediana representa o caso típico; a média representa o
+efeito dos outliers.
+
+**Por que ranquear localidades por taxa sem corte mínimo dá errado?**
+Porque taxa é uma divisão e o denominador pequeno só permite valores extremos:
+com 1 incidente, os resultados possíveis são 0% ou 100%. O ranking passa a medir
+tamanho de amostra em vez de qualidade da rede. Com 929 localidades avaliadas ao
+mesmo tempo, extremos por acaso são praticamente garantidos — é o problema das
+comparações múltiplas. A correção é exigir amostra mínima e declarar o corte.
+
+**Volume de incidentes e taxa de gravidade medem a mesma coisa?**
+Não. A localidade com mais incidentes no total (85) não aparece no topo do
+ranking por taxa. Uma localidade grande gera muitos incidentes de tudo,
+inclusive graves, sem que a rede ali seja pior. São perguntas diferentes:
+"onde acontece mais coisa?" e "onde a coisa que acontece é pior?".
+
+**Você encontrou algum viés ou limitação que impediria uma conclusão?**
+Sim, quatro. A mais importante é a ausência de tempo: sem data não há como
+medir tendência, sazonalidade ou tempo de reparo, então qualquer afirmação
+sobre "a rede está piorando" seria inventada. E as categorias são anonimizadas,
+então nenhuma conclusão causal é possível — só padrão estatístico.
