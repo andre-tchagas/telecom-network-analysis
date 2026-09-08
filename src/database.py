@@ -82,6 +82,41 @@ def consultar(sql: str, db_path: Path = DATABASE_PATH) -> pd.DataFrame:
         return pd.read_sql_query(sql, conn)
 
 
+def carregar_consultas() -> dict[str, str]:
+    """
+    Le sql/analysis_queries.sql e devolve {nome: consulta}.
+
+    As consultas ficam no arquivo .sql em vez de coladas dentro do Python
+    por dois motivos: o GitHub colore a sintaxe e fica legivel, e da' para
+    testar a consulta direto num cliente de banco sem rodar o projeto.
+
+    O corte e' feito pelos marcadores "-- name: xxx".
+    """
+    texto = (SQL_DIR / "analysis_queries.sql").read_text(encoding="utf-8")
+    consultas: dict[str, str] = {}
+    nome, linhas = None, []
+
+    for linha in texto.splitlines():
+        if linha.strip().startswith("-- name:"):
+            if nome:
+                consultas[nome] = "\n".join(linhas).strip()
+            nome, linhas = linha.split("-- name:")[1].strip(), []
+        elif nome:
+            linhas.append(linha)
+
+    if nome:
+        consultas[nome] = "\n".join(linhas).strip()
+    return consultas
+
+
+def executar_consulta_nomeada(nome: str, db_path: Path = DATABASE_PATH) -> pd.DataFrame:
+    """Roda uma consulta de analysis_queries.sql pelo nome."""
+    consultas = carregar_consultas()
+    if nome not in consultas:
+        raise KeyError(f"Consulta {nome!r} nao existe. Disponiveis: {sorted(consultas)}")
+    return consultar(consultas[nome], db_path)
+
+
 def construir_banco(db_path: Path = DATABASE_PATH,
                     processed_dir: Path = PROCESSED_DIR) -> None:
     """Cria o banco do zero e carrega todos os dados."""

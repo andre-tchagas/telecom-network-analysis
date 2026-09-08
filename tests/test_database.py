@@ -6,7 +6,12 @@ import sqlite3
 
 import pytest
 
-from src.database import construir_banco, consultar
+from src.database import (
+    carregar_consultas,
+    construir_banco,
+    consultar,
+    executar_consulta_nomeada,
+)
 
 
 @pytest.fixture(scope="module")
@@ -58,3 +63,33 @@ def test_banco_recusa_gravidade_invalida(db):
     with pytest.raises(sqlite3.IntegrityError):
         conn.execute("INSERT INTO incidents VALUES (999998, 1, 1, 7)")  # 7 nao e' valido
     conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Consultas de analysis_queries.sql
+# ---------------------------------------------------------------------------
+def test_todas_as_consultas_sao_carregadas():
+    assert len(carregar_consultas()) == 7
+
+
+def test_todas_as_consultas_executam_sem_erro(db):
+    """Se uma consulta tiver erro de SQL, este teste quebra."""
+    for nome in carregar_consultas():
+        assert not executar_consulta_nomeada(nome, db).empty, f"{nome} devolveu vazio"
+
+
+def test_consulta_de_gravidade_bate_com_o_esperado(db):
+    r = executar_consulta_nomeada("gravidade_distribuicao", db)
+    assert r["incidentes"].tolist() == [4784, 1871, 726]
+    assert r["percentual"].tolist() == [64.82, 25.35, 9.84]
+
+
+def test_localidades_criticas_respeita_o_corte_minimo(db):
+    """O HAVING COUNT(*) >= 10 impede taxas de 100% com amostra minuscula."""
+    r = executar_consulta_nomeada("localidades_criticas", db)
+    assert r["incidentes"].min() >= 10
+
+
+def test_consulta_inexistente_levanta_erro():
+    with pytest.raises(KeyError):
+        executar_consulta_nomeada("consulta_que_nao_existe")
