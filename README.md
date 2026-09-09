@@ -1,6 +1,6 @@
 # Telecom Network Analysis
 
-> 🚧 **Projeto em andamento** — 5 de 8 etapas concluídas. Veja o [andamento](#andamento).
+> 🚧 **Projeto em andamento** — 6 de 8 etapas concluídas. Veja o [andamento](#andamento).
 
 Análise de incidentes e falhas de rede de uma operadora de telecomunicações,
 usando Python, Pandas, SQL e SQLite, com dashboard em Streamlit.
@@ -88,7 +88,7 @@ data/processed/*.parquet
 database/telecom.db
       ↓  analysis_queries.sql consultas analíticas
       ↓  visualization.py     gráficos → reports/figures/*.png
-      ↓  [dashboard Streamlit]
+      ↓  dashboard/app.py     dashboard interativo (Streamlit)
 ```
 
 Um único ponto de entrada — `python run_pipeline.py` — reconstrói tudo do zero.
@@ -233,15 +233,42 @@ depende do corte escolhido.
 | 3 | Limpeza + transformação | ✅ concluído |
 | 4 | SQLite + consultas SQL | ✅ concluído |
 | 5 | Análise + visualizações | ✅ concluído |
-| 6 | Dashboard Streamlit | ⬜ próximo |
-| 7 | Testes + documentação | ⬜ |
+| 6 | Dashboard Streamlit | ✅ concluído |
+| 7 | Testes + documentação | ⬜ próximo |
 | 8 | Revisão final | ⬜ |
 
 **Concluído:** pipeline reproduzível de ponta a ponta, do CSV bruto até os
 gráficos; notebook de exploração; 7 consultas SQL analíticas; 5 visualizações;
-56 testes automatizados.
+dashboard interativo; 56 testes automatizados.
 
-**A fazer:** dashboard Streamlit, README final com screenshots.
+**A fazer:** revisão final da documentação.
+
+---
+
+## Dashboard
+
+```bash
+streamlit run dashboard/app.py
+```
+
+Abre em `http://localhost:8501`.
+
+**Como funciona:** o dashboard carrega os dados do SQLite **uma vez** (com
+`@st.cache_data`) e a partir daí filtra em memória com pandas. SQL faz o trabalho
+pesado de junção no início; pandas cuida da interação, que precisa ser instantânea.
+
+**Filtros** — tipo de alerta do log, gravidade do incidente, e um controle de
+**amostra mínima por grupo**. Vale mover esse último para 1 e observar o ranking
+de localidades encher de taxas de 100%: é a demonstração interativa de por que o
+corte existe.
+
+**KPIs** — total de incidentes, incidentes graves, taxa de gravidade comparada
+com a do dataset completo, e as categorias mais frequentes. Todos reagem aos
+filtros.
+
+**Abas** — rankings de localidades, eventos e recursos por taxa de gravidade,
+com a mesma leitura visual dos gráficos acima: vermelho acima da média, cinza
+abaixo, apagado quando a amostra é pequena demais para confiar.
 
 ---
 
@@ -254,6 +281,8 @@ gráficos; notebook de exploração; 7 consultas SQL analíticas; 5 visualizaç�
 ├── database/telecom.db         SQLite gerado pelo pipeline
 ├── notebooks/
 │   └── exploratory_analysis.ipynb
+├── dashboard/
+│   └── app.py                  dashboard Streamlit
 ├── sql/
 │   ├── schema.sql              estrutura das tabelas
 │   └── analysis_queries.sql    consultas analíticas
