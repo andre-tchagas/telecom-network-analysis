@@ -1,6 +1,6 @@
 # Telecom Network Analysis
 
-> 🚧 **Projeto em andamento** — 6 de 8 etapas concluídas. Veja o [andamento](#andamento).
+> 🚧 **Projeto em andamento** — 7 de 8 etapas concluídas. Veja o [andamento](#andamento).
 
 Análise de incidentes e falhas de rede de uma operadora de telecomunicações,
 usando Python, Pandas, SQL e SQLite, com dashboard em Streamlit.
@@ -234,12 +234,12 @@ depende do corte escolhido.
 | 4 | SQLite + consultas SQL | ✅ concluído |
 | 5 | Análise + visualizações | ✅ concluído |
 | 6 | Dashboard Streamlit | ✅ concluído |
-| 7 | Testes + documentação | ⬜ próximo |
-| 8 | Revisão final | ⬜ |
+| 7 | Testes + documentação | ✅ concluído |
+| 8 | Revisão final | ⬜ próximo |
 
 **Concluído:** pipeline reproduzível de ponta a ponta, do CSV bruto até os
 gráficos; notebook de exploração; 7 consultas SQL analíticas; 5 visualizações;
-dashboard interativo; 56 testes automatizados.
+dashboard interativo; 61 testes automatizados.
 
 **A fazer:** revisão final da documentação.
 
@@ -294,9 +294,10 @@ abaixo, apagado quando a amostra é pequena demais para confiar.
 │   ├── cleaning.py             recorte de universo e conversão de tipos
 │   ├── transformation.py       modelo dimensional
 │   ├── database.py             SQLite: criação, carga e consultas
+│   ├── metrics.py              a regra da taxa de gravidade, em um lugar só
 │   └── visualization.py        gráficos Plotly
 ├── reports/figures/            gráficos gerados (PNG)
-├── tests/                      56 testes (pytest)
+├── tests/                      61 testes (pytest)
 ├── run_pipeline.py             ponto de entrada
 ├── LEARNING_NOTES.md           notas de estudo do desenvolvedor
 └── requirements.txt
