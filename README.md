@@ -122,6 +122,50 @@ Um único ponto de entrada — `python run_pipeline.py` — reconstrói tudo do 
 | Ponte | `incident_events` | 12.468 |
 | Ponte | `incident_resources` | 8.460 |
 
+### Dicionário de dados
+
+**`incidents`** — uma linha por incidente
+
+| Coluna | Descrição |
+|---|---|
+| `incident_id` | identificador único do incidente |
+| `location_id` | onde ocorreu → `locations` |
+| `severity_type_id` | tipo de alerta emitido pelo log → `severity_types` |
+| `fault_severity` | **resultado**: 0 sem falha, 1 poucas falhas, 2 muitas falhas |
+
+**Tabelas-ponte** — existem porque um incidente pode ter várias ocorrências de cada
+
+| Tabela | Colunas | Responde |
+|---|---|---|
+| `incident_events` | `incident_id`, `event_type_id` | **o que** foi registrado |
+| `incident_resources` | `incident_id`, `resource_type_id` | **o que** estava envolvido |
+| `incident_log_features` | `incident_id`, `log_feature_id`, `volume` | **quanto** o log mediu |
+
+**Tabelas de dimensão** — traduzem o identificador no rótulo original do dataset
+(`79` → `"location 79"`): `locations` (929), `event_types` (49),
+`log_features` (331), `resource_types` (10), `severity_types` (5).
+
+### Um incidente por inteiro
+
+```
+INCIDENTE 20
+  onde ocorreu ........... location 79
+  alerta do log .......... severity_type 2
+  resultado .............. fault_severity 0  (não gerou falha)
+
+  eventos registrados .... event_type 10, event_type 11, event_type 54
+  recursos envolvidos .... resource_type 2, resource_type 3, resource_type 8
+  medições do log ........ feature 39 (volume 1), feature 55 (volume 1)
+```
+
+Comparando com um chamado de manutenção: `location` é o endereço, `event_type` é
+o que foi relatado, `resource_type` é o equipamento envolvido, `log_feature` são
+as medições, e `fault_severity` é como o chamado terminou.
+
+**As categorias são anonimizadas.** Sabemos que o `event_type 11` aparece em 3.068
+incidentes, mas não o que ele representa fisicamente na rede. Por isso as
+conclusões deste projeto são padrões estatísticos, nunca relações de causa.
+
 ---
 
 ## Resultados parciais
