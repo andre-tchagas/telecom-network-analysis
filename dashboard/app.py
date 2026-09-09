@@ -124,7 +124,9 @@ recursos = carregar_recursos()
 
 # Calculada do proprio dado em vez de fixada na mao: evita que o numero do
 # dashboard e o do banco divirjam se o dataset mudar.
-TAXA_BASE = round((incidentes["fault_severity"] == 2).mean() * 100, 2)
+# Guardada SEM arredondar: arredondar aqui faria a comparacao consigo mesma
+# dar '-0.00 p.p.' quando nenhum filtro esta aplicado.
+TAXA_BASE = (incidentes["fault_severity"] == 2).mean() * 100
 
 # --- Filtros ---------------------------------------------------------------
 st.sidebar.header("Filtros")
@@ -148,7 +150,7 @@ corte = st.sidebar.slider(
 )
 
 st.sidebar.markdown("---")
-st.sidebar.caption(f"Taxa de graves no dataset completo: **{TAXA_BASE}%**")
+st.sidebar.caption(f"Taxa de graves no dataset completo: **{TAXA_BASE:.2f}%**")
 
 # --- Aplicacao dos filtros (pandas) ----------------------------------------
 filtrado = incidentes[

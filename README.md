@@ -247,6 +247,8 @@ dashboard interativo; 56 testes automatizados.
 
 ## Dashboard
 
+![Dashboard Telecom Network Operations Analytics](reports/figures/06_dashboard.png)
+
 ```bash
 streamlit run dashboard/app.py
 ```
