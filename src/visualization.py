@@ -19,6 +19,7 @@ import plotly.graph_objects as go
 
 from src.config import FIGURES_DIR, get_logger
 from src.database import executar_consulta_nomeada
+from src.metrics import AMOSTRA_MINIMA_CONFIAVEL
 
 logger = get_logger("visualization")
 
@@ -34,11 +35,8 @@ CINZA_CLARO = "#e2e8f0"
 # referencia: barras acima dela estao piores que a media.
 TAXA_BASE = 9.84
 
-# Abaixo deste numero de incidentes, a taxa e' pouco confiavel: com poucos
-# casos ela so consegue dar valores extremos (com 4 incidentes, os valores
-# possiveis sao 0%, 25%, 50%, 75% e 100%). Essas barras recebem cor apagada
-# para o olho nao dar a elas mais peso do que merecem.
-AMOSTRA_MINIMA_CONFIAVEL = 50
+# Barras com amostra abaixo do minimo recebem cor apagada, para o olho nao dar
+# a elas mais peso do que merecem. O limite vive em src/metrics.py.
 
 
 def _cor_por_taxa(taxa: float, incidentes: int) -> str:

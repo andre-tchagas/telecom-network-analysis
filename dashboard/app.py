@@ -27,6 +27,7 @@ import plotly.express as px
 import streamlit as st
 
 from src.database import consultar
+from src.metrics import AMOSTRA_MINIMA_CONFIAVEL, taxa_de_gravidade
 
 TAXA_BASE = 9.84  # % de incidentes graves no dataset inteiro
 VERMELHO, CINZA, CINZA_CLARO = "#dc2626", "#94a3b8", "#e2e8f0"
@@ -71,28 +72,13 @@ def carregar_recursos() -> pd.DataFrame:
     """)
 
 
-def taxa_de_graves(df: pd.DataFrame, coluna: str, minimo: int) -> pd.DataFrame:
-    """
-    Agrupa por uma coluna e calcula quantos incidentes e qual a taxa de graves.
-
-    `minimo` descarta grupos com poucos incidentes: com amostra pequena a taxa
-    so consegue dar valores extremos (com 1 incidente, ou 0% ou 100%).
-    """
-    g = (df.assign(grave=(df["fault_severity"] == 2).astype(int))
-           .groupby(coluna, observed=True)
-           .agg(incidentes=("incident_id", "count"), graves=("grave", "sum"))
-           .reset_index())
-    g["taxa_graves_pct"] = (g["graves"] / g["incidentes"] * 100).round(1)
-    return g[g["incidentes"] >= minimo]
-
-
 def barras_horizontais(df: pd.DataFrame, coluna: str, titulo: str,
                        destacar_amostra_pequena: bool = False) -> "px.Figure":
     """Grafico de barras por taxa de gravidade, com a mesma leitura visual do README."""
     d = df.sort_values("taxa_graves_pct", ascending=False).head(10).sort_values("taxa_graves_pct")
 
     if destacar_amostra_pequena:
-        cores = [CINZA_CLARO if n < 50 else (VERMELHO if t > TAXA_BASE else CINZA)
+        cores = [CINZA_CLARO if n < AMOSTRA_MINIMA_CONFIAVEL else (VERMELHO if t > TAXA_BASE else CINZA)
                  for t, n in zip(d["taxa_graves_pct"], d["incidentes"])]
     else:
         cores = [VERMELHO if t > TAXA_BASE else CINZA for t in d["taxa_graves_pct"]]
@@ -212,7 +198,7 @@ with esquerda:
 
 with direita:
     st.subheader("O alerta do log antecipa a gravidade?")
-    por_alerta = taxa_de_graves(filtrado, "severity_type_name", minimo=1)
+    por_alerta = taxa_de_gravidade(filtrado, "severity_type_name", minimo=1)
     fig = px.bar(por_alerta.sort_values("incidentes", ascending=False),
                  x="severity_type_name", y="taxa_graves_pct",
                  text=[f"{t}%" for t in
@@ -233,7 +219,7 @@ aba_local, aba_evento, aba_recurso = st.tabs(
     ["🗺️ Localidades", "⚡ Eventos", "🔧 Recursos"])
 
 with aba_local:
-    por_local = taxa_de_graves(filtrado, "location_name", minimo=corte)
+    por_local = taxa_de_gravidade(filtrado, "location_name", minimo=corte)
     if por_local.empty:
         st.info(f"Nenhuma localidade possui {corte} incidentes ou mais com estes filtros.")
     else:
@@ -245,7 +231,7 @@ with aba_local:
         st.caption(f"{len(por_local)} localidades atendem ao mínimo de {corte} incidentes.")
 
 with aba_evento:
-    por_evento = taxa_de_graves(eventos_f, "event_type_name", minimo=corte)
+    por_evento = taxa_de_gravidade(eventos_f, "event_type_name", minimo=corte)
     if por_evento.empty:
         st.info("Nenhum tipo de evento atende ao mínimo com estes filtros.")
     else:
@@ -256,7 +242,7 @@ with aba_evento:
             width='stretch')
 
 with aba_recurso:
-    por_recurso = taxa_de_graves(recursos_f, "resource_type_name", minimo=1)
+    por_recurso = taxa_de_gravidade(recursos_f, "resource_type_name", minimo=1)
     st.plotly_chart(
         barras_horizontais(por_recurso, "resource_type_name",
                            "Recursos por taxa de gravidade",
