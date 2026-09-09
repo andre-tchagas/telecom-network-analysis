@@ -20,9 +20,11 @@ data/processed/*
 # Dataset original compactado (os CSVs extraidos estao versionados em data/raw/)
 datasets/
 
-# Figuras geradas
+# Figuras: os PNG sao versionados porque aparecem no README.
+# O HTML interativo e' grande e nao renderiza no GitHub, entao fica de fora.
 reports/figures/*
 !reports/figures/.gitkeep
+!reports/figures/*.png
 
 # Segredos e ambiente local
 .env

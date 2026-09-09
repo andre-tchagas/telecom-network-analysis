@@ -15,6 +15,9 @@ streamlit==1.63.0
 # Notebook de exploracao
 jupyter==1.1.1
 
+# Exportacao de graficos Plotly para PNG
+kaleido==1.4.0
+
 # Testes
 pytest==9.1.1
 
