@@ -1,6 +1,6 @@
 # Telecom Network Analysis
 
-> 🚧 **Projeto em andamento** — 4 de 8 etapas concluídas. Veja o [andamento](#andamento).
+> 🚧 **Projeto em andamento** — 5 de 8 etapas concluídas. Veja o [andamento](#andamento).
 
 Análise de incidentes e falhas de rede de uma operadora de telecomunicações,
 usando Python, Pandas, SQL e SQLite, com dashboard em Streamlit.
@@ -87,7 +87,7 @@ data/processed/*.parquet
       ↓  database.py          cria o banco e carrega as tabelas
 database/telecom.db
       ↓  analysis_queries.sql consultas analíticas
-      ↓  [visualização]
+      ↓  visualization.py     gráficos → reports/figures/*.png
       ↓  [dashboard Streamlit]
 ```
 
@@ -131,42 +131,52 @@ Um único ponto de entrada — `python run_pipeline.py` — reconstrói tudo do 
 
 **Taxa base de incidentes graves no dataset: 9,84%.**
 
-### 1. O alerta do log prevê a gravidade real
+### A base é desbalanceada
 
-| `severity_type` | incidentes | % graves |
-|---|---:|---:|
-| 1 | 3.375 | **14,2%** |
-| 2 | 3.591 | 6,9% |
-| 4 | 388 | **0,0%** |
-| 5 | 23 | 0,0% |
-| 3 | 4 | 0,0% |
+![Distribuição por gravidade](reports/figures/01_gravidade.png)
 
-O tipo 4 tem **388 incidentes e nenhum grave** — na taxa base esperaríamos ~38.
-Operacionalmente: alertas tipo 1 merecem prioridade sobre tipo 2.
+Dois em cada três incidentes não geraram falha alguma. Isso importa porque um
+ranking por **contagem** de incidentes graves apenas reproduziria o ranking de
+volume total — por isso as análises abaixo usam **taxa**.
 
-### 2. Alguns tipos de evento nunca escalam
+### 1. O alerta do log antecipa a gravidade real
 
-| `event_type` | incidentes | % graves |
-|---|---:|---:|
-| 15 | 1.724 | **29,8%** |
-| 44 | 178 | 23,0% |
-| 11 | 3.068 | 13,3% |
-| 35 | 2.693 | **0,0%** |
-| 34 | 2.411 | **0,0%** |
+![Alerta do log vs gravidade](reports/figures/02_alerta_vs_gravidade.png)
+
+O `severity_type 4` tem **388 incidentes e nenhum grave**. Na taxa base
+esperaríamos ~38. Zero em 388 não é acaso de amostra pequena.
+
+Operacionalmente: alertas do tipo 1 merecem prioridade sobre os do tipo 2, e os
+tipos 3, 4 e 5 nunca escalaram.
+
+### 2. O tipo de evento separa bem o que vira problema
+
+![Eventos por taxa de gravidade](reports/figures/03_eventos.png)
+
+O `event_type 15` tem **29,8%** de graves — três vezes a média. Já os tipos 35 e
+34, juntos presentes em mais de 5 mil incidentes, **nunca** geraram falha grave.
 
 ### 3. Dois recursos dominam, com risco 5x diferente
 
-`resource_type 8` aparece em 4.051 incidentes com **16,8%** de graves.
-`resource_type 2` aparece em 3.585 com apenas **3,0%**. Volume parecido, risco muito diferente.
+![Recursos por taxa de gravidade](reports/figures/04_recursos.png)
 
-### 4. Ranking de localidades exige amostra mínima
+`resource_type 8` aparece em 4.051 incidentes com **16,8%** de graves;
+`resource_type 2` aparece em 3.585 com apenas **3,0%**. Volume parecido, risco
+muito diferente.
 
-Sem corte, 14 localidades marcam 100% de gravidade — **10 delas com um único
-incidente**. Com corte de 10 incidentes, o topo passa a ser `location 1100`
+As barras apagadas têm menos de 50 incidentes. O `resource_type 5` marca 100%,
+mas são **4 incidentes** — a taxa existe e não é confiável.
+
+### 4. Localidades críticas, com amostra mínima
+
+![Localidades críticas](reports/figures/05_localidades.png)
+
+Sem corte mínimo, 14 localidades marcariam 100% de gravidade — **10 delas com um
+único incidente**. Exigindo 10 incidentes, o topo passa a ser `location 1100`
 (33 graves em 45, **73,3%**), mais de 7× a taxa base.
 
-O top 5 é **idêntico** nos cortes de 10 e de 30, o que indica que o ranking é
-robusto e não depende do corte escolhido.
+O top 5 é **idêntico** nos cortes de 10 e de 30: o ranking é robusto e não
+depende do corte escolhido.
 
 ---
 
@@ -178,15 +188,16 @@ robusto e não depende do corte escolhido.
 | 2 | Análise exploratória | ✅ concluído |
 | 3 | Limpeza + transformação | ✅ concluído |
 | 4 | SQLite + consultas SQL | ✅ concluído |
-| 5 | Análise + visualizações | ⬜ próximo |
-| 6 | Dashboard Streamlit | ⬜ |
+| 5 | Análise + visualizações | ✅ concluído |
+| 6 | Dashboard Streamlit | ⬜ próximo |
 | 7 | Testes + documentação | ⬜ |
 | 8 | Revisão final | ⬜ |
 
-**Concluído:** pipeline reproduzível de ponta a ponta, do CSV bruto ao banco
-carregado; notebook de exploração; 7 consultas SQL analíticas; 49 testes automatizados.
+**Concluído:** pipeline reproduzível de ponta a ponta, do CSV bruto até os
+gráficos; notebook de exploração; 7 consultas SQL analíticas; 5 visualizações;
+56 testes automatizados.
 
-**A fazer:** gráficos em Plotly, dashboard Streamlit, README final com screenshots.
+**A fazer:** dashboard Streamlit, README final com screenshots.
 
 ---
 
@@ -207,8 +218,10 @@ carregado; notebook de exploração; 7 consultas SQL analíticas; 49 testes auto
 │   ├── data_loader.py          leitura e validação do dado bruto
 │   ├── cleaning.py             recorte de universo e conversão de tipos
 │   ├── transformation.py       modelo dimensional
-│   └── database.py             SQLite: criação, carga e consultas
-├── tests/                      49 testes (pytest)
+│   ├── database.py             SQLite: criação, carga e consultas
+│   └── visualization.py        gráficos Plotly
+├── reports/figures/            gráficos gerados (PNG)
+├── tests/                      56 testes (pytest)
 ├── run_pipeline.py             ponto de entrada
 ├── LEARNING_NOTES.md           notas de estudo do desenvolvedor
 └── requirements.txt
