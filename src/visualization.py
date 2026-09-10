@@ -19,7 +19,7 @@ import plotly.graph_objects as go
 
 from src.config import FIGURES_DIR, get_logger
 from src.database import executar_consulta_nomeada
-from src.metrics import AMOSTRA_MINIMA_CONFIAVEL
+from src.metrics import AMOSTRA_MINIMA_CONFIAVEL, TAXA_BASE_PCT
 
 logger = get_logger("visualization")
 
@@ -31,19 +31,13 @@ CORES_GRAVIDADE = ["#16a34a", "#f59e0b", "#dc2626"]  # 0 verde, 1 laranja, 2 ver
 
 CINZA_CLARO = "#e2e8f0"
 
-# Percentual de incidentes graves no dataset inteiro. Serve de linha de
-# referencia: barras acima dela estao piores que a media.
-TAXA_BASE = 9.84
-
-# Barras com amostra abaixo do minimo recebem cor apagada, para o olho nao dar
-# a elas mais peso do que merecem. O limite vive em src/metrics.py.
 
 
 def _cor_por_taxa(taxa: float, incidentes: int) -> str:
     """Vermelho = acima da media. Cinza = abaixo. Apagado = amostra pequena."""
     if incidentes < AMOSTRA_MINIMA_CONFIAVEL:
         return CINZA_CLARO
-    return VERMELHO if taxa > TAXA_BASE else CINZA
+    return VERMELHO if taxa > TAXA_BASE_PCT else CINZA
 
 
 def _layout(fig: go.Figure, titulo: str, subtitulo: str = "") -> go.Figure:
@@ -84,14 +78,14 @@ def grafico_alerta_vs_gravidade(df: pd.DataFrame) -> go.Figure:
     fig = go.Figure(go.Bar(
         x=d["severity_type_name"],
         y=d["taxa_graves_pct"],
-        marker_color=[VERMELHO if t > TAXA_BASE else CINZA for t in d["taxa_graves_pct"]],
+        marker_color=[VERMELHO if t > TAXA_BASE_PCT else CINZA for t in d["taxa_graves_pct"]],
         text=[f"{t}%<br><span style='font-size:10px;color:#64748b'>{n:,} inc.</span>"
               .replace(",", ".") for t, n in zip(d["taxa_graves_pct"], d["incidentes"])],
         textposition="outside",
     ))
     # Linha da media: separa quem esta acima de quem esta abaixo.
-    fig.add_hline(y=TAXA_BASE, line_dash="dash", line_color=CINZA,
-                  annotation_text=f"média do dataset: {TAXA_BASE}%",
+    fig.add_hline(y=TAXA_BASE_PCT, line_dash="dash", line_color=CINZA,
+                  annotation_text=f"média do dataset: {TAXA_BASE_PCT}%",
                   annotation_position="top right")
     fig.update_yaxes(title="% de incidentes graves", range=[0, 18])
     return _layout(fig, "O alerta do log antecipa a gravidade real",
@@ -106,17 +100,17 @@ def grafico_eventos(df: pd.DataFrame) -> go.Figure:
         x=d["taxa_graves_pct"],
         y=d["event_type_name"],
         orientation="h",
-        marker_color=[VERMELHO if t > TAXA_BASE else CINZA for t in d["taxa_graves_pct"]],
+        marker_color=[VERMELHO if t > TAXA_BASE_PCT else CINZA for t in d["taxa_graves_pct"]],
         text=[f"  {t}%  ({n:,} inc.)".replace(",", ".")
               for t, n in zip(d["taxa_graves_pct"], d["incidentes"])],
         textposition="outside",
     ))
-    fig.add_vline(x=TAXA_BASE, line_dash="dash", line_color=CINZA)
+    fig.add_vline(x=TAXA_BASE_PCT, line_dash="dash", line_color=CINZA)
     fig.update_xaxes(title="% de incidentes graves",
                      range=[0, d["taxa_graves_pct"].max() * 1.45])
     fig.update_layout(height=460)
     return _layout(fig, "Tipos de evento com maior taxa de gravidade",
-                   f"Linha tracejada = média do dataset ({TAXA_BASE}%). "
+                   f"Linha tracejada = média do dataset ({TAXA_BASE_PCT}%). "
                    "Apenas eventos com 50+ incidentes")
 
 
@@ -134,7 +128,7 @@ def grafico_recursos(df: pd.DataFrame) -> go.Figure:
               for t, n in zip(d["taxa_graves_pct"], d["incidentes"])],
         textposition="outside",
     ))
-    fig.add_vline(x=TAXA_BASE, line_dash="dash", line_color=CINZA)
+    fig.add_vline(x=TAXA_BASE_PCT, line_dash="dash", line_color=CINZA)
     fig.update_xaxes(title="% de incidentes graves", range=[0, 125])
     fig.update_layout(height=460)
     return _layout(fig, "Recursos por taxa de gravidade",
@@ -155,7 +149,7 @@ def grafico_localidades(df: pd.DataFrame) -> go.Figure:
               for t, g, n in zip(d["taxa_graves_pct"], d["graves"], d["incidentes"])],
         textposition="outside",
     ))
-    fig.add_vline(x=TAXA_BASE, line_dash="dash", line_color=CINZA)
+    fig.add_vline(x=TAXA_BASE_PCT, line_dash="dash", line_color=CINZA)
     fig.update_xaxes(title="% de incidentes graves", range=[0, 100])
     fig.update_layout(height=460)
     return _layout(fig, "Localidades mais críticas da rede",

@@ -25,6 +25,22 @@ AMOSTRA_MINIMA_CONFIAVEL = 50
 
 GRAVE = 2  # valor de fault_severity que representa "muitas falhas"
 
+# Percentual de incidentes graves no dataset completo. Serve de linha de
+# referencia nos graficos: acima dela, o grupo esta pior que a media.
+# O valor mora aqui e tests/test_metrics.py confere que continua batendo com o
+# banco -- se o dataset mudar, o teste quebra em vez de o grafico mentir.
+TAXA_BASE_PCT = 9.84
+
+
+def taxa_base(df: pd.DataFrame) -> float:
+    """
+    Percentual exato de incidentes graves em `df`, SEM arredondar.
+
+    Use este valor para calculo (comparacoes, deltas) e TAXA_BASE_PCT para
+    exibicao. Arredondar antes de comparar produz resultados como "-0,00".
+    """
+    return (df["fault_severity"] == GRAVE).mean() * 100
+
 
 def taxa_de_gravidade(df: pd.DataFrame, coluna: str, minimo: int = 1) -> pd.DataFrame:
     """

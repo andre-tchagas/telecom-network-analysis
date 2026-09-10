@@ -27,9 +27,8 @@ import plotly.express as px
 import streamlit as st
 
 from src.database import consultar
-from src.metrics import AMOSTRA_MINIMA_CONFIAVEL, taxa_de_gravidade
+from src.metrics import AMOSTRA_MINIMA_CONFIAVEL, taxa_base, taxa_de_gravidade
 
-TAXA_BASE = 9.84  # % de incidentes graves no dataset inteiro
 VERMELHO, CINZA, CINZA_CLARO = "#dc2626", "#94a3b8", "#e2e8f0"
 
 st.set_page_config(page_title="Telecom Network Operations Analytics",
@@ -108,11 +107,9 @@ incidentes = carregar_incidentes()
 eventos = carregar_eventos()
 recursos = carregar_recursos()
 
-# Calculada do proprio dado em vez de fixada na mao: evita que o numero do
-# dashboard e o do banco divirjam se o dataset mudar.
-# Guardada SEM arredondar: arredondar aqui faria a comparacao consigo mesma
-# dar '-0.00 p.p.' quando nenhum filtro esta aplicado.
-TAXA_BASE = (incidentes["fault_severity"] == 2).mean() * 100
+# Valor exato (sem arredondar) vindo de src/metrics.py. Arredondar aqui faria a
+# comparacao consigo mesma exibir "-0,00 p.p." sem nenhum filtro aplicado.
+TAXA_BASE = taxa_base(incidentes)
 
 # --- Filtros ---------------------------------------------------------------
 st.sidebar.header("Filtros")

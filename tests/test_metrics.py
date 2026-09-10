@@ -80,3 +80,14 @@ def test_pandas_concorda_com_sql_por_localidade(incidentes):
         assert linha.incidentes == esperado["incidentes"]
         assert linha.graves == esperado["graves"]
         assert linha.taxa_graves_pct == esperado["taxa_graves_pct"]
+
+
+def test_constante_de_exibicao_bate_com_o_banco(incidentes):
+    """
+    TAXA_BASE_PCT e' um numero fixo usado como linha de referencia nos
+    graficos. Este teste garante que ele continua correspondendo ao dado real:
+    se o dataset mudar, o teste quebra em vez de o grafico mentir.
+    """
+    from src.metrics import TAXA_BASE_PCT, taxa_base
+
+    assert round(taxa_base(incidentes), 2) == TAXA_BASE_PCT
