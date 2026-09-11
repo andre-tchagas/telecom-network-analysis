@@ -21,9 +21,9 @@ import sys
 from src.cleaning import clean_raw_data, validate_clean_data
 from src.config import setup_logging
 from src.data_loader import load_raw_data, validate_raw_data
-from src.database import construir_banco
+from src.database import build_database
 from src.transformation import build_star_schema, save_processed, validate_star_schema
-from src.visualization import gerar_figuras
+from src.visualization import generate_figures
 
 
 def main() -> int:
@@ -49,10 +49,10 @@ def main() -> int:
         save_processed(star)
 
         # Etapa 6 -- Cria o banco SQLite e carrega as tabelas
-        construir_banco()
+        build_database()
 
         # Etapa 7 -- Gera os graficos a partir das consultas SQL
-        gerar_figuras()
+        generate_figures()
 
     except (FileNotFoundError, ValueError) as exc:
         # Erros esperados e acionaveis: reportamos de forma limpa, sem traceback.

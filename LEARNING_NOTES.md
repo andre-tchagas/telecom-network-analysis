@@ -458,8 +458,8 @@ pandas cuida da interação.
 ### Exemplo
 ```python
 @st.cache_data
-def carregar_incidentes():
-    return consultar("SELECT ...")
+def load_incidents():
+    return run_query("SELECT ...")
 ```
 
 ---

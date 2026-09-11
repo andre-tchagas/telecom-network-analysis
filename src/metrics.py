@@ -12,6 +12,11 @@ Por que este modulo existe:
 
     Aqui fica a versao pandas, e tests/test_metrics.py garante que ela
     concorda com a versao SQL.
+
+Nota sobre idioma: as FUNCOES estao em ingles (padrao de mercado), mas as
+COLUNAS de dados que elas produzem ("incidentes", "graves", "taxa_graves_pct")
+seguem os nomes definidos no SQL, em portugues -- o codigo e' ingles, o dado e'
+portugues.
 """
 
 from __future__ import annotations
@@ -21,43 +26,43 @@ import pandas as pd
 # Abaixo deste numero de incidentes a taxa e' pouco confiavel: com poucos casos
 # ela so consegue dar valores extremos (com 4 incidentes, os unicos resultados
 # possiveis sao 0%, 25%, 50%, 75% e 100%).
-AMOSTRA_MINIMA_CONFIAVEL = 50
+RELIABLE_MIN_SAMPLE = 50
 
-GRAVE = 2  # valor de fault_severity que representa "muitas falhas"
+SEVERE = 2  # valor de fault_severity que representa "muitas falhas"
 
 # Percentual de incidentes graves no dataset completo. Serve de linha de
 # referencia nos graficos: acima dela, o grupo esta pior que a media.
 # O valor mora aqui e tests/test_metrics.py confere que continua batendo com o
 # banco -- se o dataset mudar, o teste quebra em vez de o grafico mentir.
-TAXA_BASE_PCT = 9.84
+BASE_SEVERITY_RATE_PCT = 9.84
 
 
-def taxa_base(df: pd.DataFrame) -> float:
+def base_severity_rate(df: pd.DataFrame) -> float:
     """
     Percentual exato de incidentes graves em `df`, SEM arredondar.
 
-    Use este valor para calculo (comparacoes, deltas) e TAXA_BASE_PCT para
-    exibicao. Arredondar antes de comparar produz resultados como "-0,00".
+    Use este valor para calculo (comparacoes, deltas) e BASE_SEVERITY_RATE_PCT
+    para exibicao. Arredondar antes de comparar produz resultados como "-0,00".
     """
-    return (df["fault_severity"] == GRAVE).mean() * 100
+    return (df["fault_severity"] == SEVERE).mean() * 100
 
 
-def taxa_de_gravidade(df: pd.DataFrame, coluna: str, minimo: int = 1) -> pd.DataFrame:
+def severity_rate_by(df: pd.DataFrame, column: str, min_sample: int = 1) -> pd.DataFrame:
     """
-    Agrupa por `coluna` e devolve incidentes, graves e a taxa de graves (%).
+    Agrupa por `column` e devolve incidentes, graves e a taxa de graves (%).
 
-    `minimo` descarta grupos pequenos demais para a taxa significar algo.
+    `min_sample` descarta grupos pequenos demais para a taxa significar algo.
 
     Exemplo:
-        >>> taxa_de_gravidade(incidentes, "location_name", minimo=10)
+        >>> severity_rate_by(incidents, "location_name", min_sample=10)
            location_name  incidentes  graves  taxa_graves_pct
             location 1100          45      33             73.3
     """
-    resumo = (
-        df.assign(_grave=(df["fault_severity"] == GRAVE).astype(int))
-          .groupby(coluna, observed=True)
-          .agg(incidentes=("fault_severity", "size"), graves=("_grave", "sum"))
+    summary = (
+        df.assign(_severe=(df["fault_severity"] == SEVERE).astype(int))
+          .groupby(column, observed=True)
+          .agg(incidentes=("fault_severity", "size"), graves=("_severe", "sum"))
           .reset_index()
     )
-    resumo["taxa_graves_pct"] = (resumo["graves"] / resumo["incidentes"] * 100).round(1)
-    return resumo[resumo["incidentes"] >= minimo]
+    summary["taxa_graves_pct"] = (summary["graves"] / summary["incidentes"] * 100).round(1)
+    return summary[summary["incidentes"] >= min_sample]

@@ -16,9 +16,9 @@ from src.config import DATABASE_PATH, PROCESSED_DIR, SQL_DIR, get_logger
 
 logger = get_logger("database")
 
-# Ordem de carga: as tabelas de nomes precisam existir antes das que
-# apontam para elas, senao a FOREIGN KEY reclama.
-TABELAS = [
+# Ordem de carga: as dimensoes precisam existir antes das tabelas que apontam
+# para elas, senao a FOREIGN KEY reclama.
+TABLE_LOAD_ORDER = [
     "locations",
     "severity_types",
     "event_types",
@@ -31,7 +31,7 @@ TABELAS = [
 ]
 
 
-def conectar(db_path: Path = DATABASE_PATH) -> sqlite3.Connection:
+def connect(db_path: Path = DATABASE_PATH) -> sqlite3.Connection:
     """
     Abre a conexao com o banco.
 
@@ -45,83 +45,80 @@ def conectar(db_path: Path = DATABASE_PATH) -> sqlite3.Connection:
     return conn
 
 
-def criar_banco(db_path: Path = DATABASE_PATH) -> None:
+def create_schema(db_path: Path = DATABASE_PATH) -> None:
     """Cria as tabelas vazias, executando sql/schema.sql."""
     schema = (SQL_DIR / "schema.sql").read_text(encoding="utf-8")
-    with conectar(db_path) as conn:
+    with connect(db_path) as conn:
         conn.executescript(schema)
     logger.info("Banco criado em %s", db_path)
 
 
-def carregar_tabelas(db_path: Path = DATABASE_PATH,
-                     processed_dir: Path = PROCESSED_DIR) -> None:
+def load_tables(db_path: Path = DATABASE_PATH,
+                processed_dir: Path = PROCESSED_DIR) -> None:
     """
     Le cada arquivo Parquet e insere no banco.
 
-    `to_sql` do pandas faz o INSERT linha a linha por baixo dos panos.
-    Usamos if_exists="append" porque as tabelas ja foram criadas pelo
-    schema.sql -- queremos preencher, nao recriar (o que apagaria as
-    chaves e os indices).
+    `to_sql` do pandas faz o INSERT por baixo dos panos. Usamos
+    if_exists="append" porque as tabelas ja foram criadas pelo schema.sql --
+    queremos preencher, nao recriar (o que apagaria as chaves e os indices).
     """
-    with conectar(db_path) as conn:
-        for tabela in TABELAS:
-            df = pd.read_parquet(processed_dir / f"{tabela}.parquet")
-            df.to_sql(tabela, conn, if_exists="append", index=False)
-            logger.info("  %-22s -> %6d linhas inseridas", tabela, len(df))
+    with connect(db_path) as conn:
+        for table in TABLE_LOAD_ORDER:
+            df = pd.read_parquet(processed_dir / f"{table}.parquet")
+            df.to_sql(table, conn, if_exists="append", index=False)
+            logger.info("  %-22s -> %6d linhas inseridas", table, len(df))
 
 
-def consultar(sql: str, db_path: Path = DATABASE_PATH) -> pd.DataFrame:
+def run_query(sql: str, db_path: Path = DATABASE_PATH) -> pd.DataFrame:
     """
     Executa uma consulta SQL e devolve o resultado como DataFrame.
 
-    E' a ponte entre os dois mundos do projeto: o SQL faz o trabalho
-    pesado no banco, e o resultado volta em formato Pandas para virar
-    grafico ou tabela no dashboard.
+    E' a ponte entre os dois mundos do projeto: o SQL faz o trabalho pesado no
+    banco, e o resultado volta em Pandas para virar grafico ou tabela.
     """
-    with conectar(db_path) as conn:
+    with connect(db_path) as conn:
         return pd.read_sql_query(sql, conn)
 
 
-def carregar_consultas() -> dict[str, str]:
+def load_named_queries() -> dict[str, str]:
     """
     Le sql/analysis_queries.sql e devolve {nome: consulta}.
 
-    As consultas ficam no arquivo .sql em vez de coladas dentro do Python
-    por dois motivos: o GitHub colore a sintaxe e fica legivel, e da' para
-    testar a consulta direto num cliente de banco sem rodar o projeto.
-
-    O corte e' feito pelos marcadores "-- name: xxx".
+    As consultas ficam no arquivo .sql em vez de coladas dentro do Python por
+    dois motivos: o GitHub colore a sintaxe, e da' para testar a consulta direto
+    num cliente de banco sem rodar o projeto. O corte e' feito pelos marcadores
+    "-- name: xxx".
     """
-    texto = (SQL_DIR / "analysis_queries.sql").read_text(encoding="utf-8")
-    consultas: dict[str, str] = {}
-    nome, linhas = None, []
+    text = (SQL_DIR / "analysis_queries.sql").read_text(encoding="utf-8")
+    queries: dict[str, str] = {}
+    name, lines = None, []
 
-    for linha in texto.splitlines():
-        if linha.strip().startswith("-- name:"):
-            if nome:
-                consultas[nome] = "\n".join(linhas).strip()
-            nome, linhas = linha.split("-- name:")[1].strip(), []
-        elif nome:
-            linhas.append(linha)
+    for line in text.splitlines():
+        if line.strip().startswith("-- name:"):
+            if name:
+                queries[name] = "\n".join(lines).strip()
+            name, lines = line.split("-- name:")[1].strip(), []
+        elif name:
+            lines.append(line)
 
-    if nome:
-        consultas[nome] = "\n".join(linhas).strip()
-    return consultas
+    if name:
+        queries[name] = "\n".join(lines).strip()
+    return queries
 
 
-def executar_consulta_nomeada(nome: str, db_path: Path = DATABASE_PATH) -> pd.DataFrame:
+def run_named_query(name: str, db_path: Path = DATABASE_PATH) -> pd.DataFrame:
     """Roda uma consulta de analysis_queries.sql pelo nome."""
-    consultas = carregar_consultas()
-    if nome not in consultas:
-        raise KeyError(f"Consulta {nome!r} nao existe. Disponiveis: {sorted(consultas)}")
-    return consultar(consultas[nome], db_path)
+    queries = load_named_queries()
+    if name not in queries:
+        raise KeyError(f"Consulta {name!r} nao existe. Disponiveis: {sorted(queries)}")
+    return run_query(queries[name], db_path)
 
 
-def construir_banco(db_path: Path = DATABASE_PATH,
-                    processed_dir: Path = PROCESSED_DIR) -> None:
+def build_database(db_path: Path = DATABASE_PATH,
+                   processed_dir: Path = PROCESSED_DIR) -> None:
     """Cria o banco do zero e carrega todos os dados."""
-    criar_banco(db_path)
-    carregar_tabelas(db_path, processed_dir)
+    create_schema(db_path)
+    load_tables(db_path, processed_dir)
 
-    total = consultar("SELECT COUNT(*) AS n FROM incidents", db_path)["n"].iloc[0]
+    total = run_query("SELECT COUNT(*) AS n FROM incidents", db_path)["n"].iloc[0]
     logger.info("Banco pronto: %d incidentes carregados", total)

@@ -11,14 +11,14 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from src.database import consultar, executar_consulta_nomeada
-from src.metrics import taxa_de_gravidade
+from src.database import run_named_query, run_query
+from src.metrics import severity_rate_by
 
 
 # ---------------------------------------------------------------------------
 # Comportamento da funcao
 # ---------------------------------------------------------------------------
-def _exemplo() -> pd.DataFrame:
+def _example() -> pd.DataFrame:
     """4 incidentes em A (1 grave = 25%) e 2 em B (2 graves = 100%)."""
     return pd.DataFrame({
         "grupo": ["A", "A", "A", "A", "B", "B"],
@@ -27,31 +27,31 @@ def _exemplo() -> pd.DataFrame:
 
 
 def test_calcula_a_taxa_corretamente():
-    r = taxa_de_gravidade(_exemplo(), "grupo").set_index("grupo")
+    r = severity_rate_by(_example(), "grupo").set_index("grupo")
     assert r.loc["A", "incidentes"] == 4
     assert r.loc["A", "graves"] == 1
     assert r.loc["A", "taxa_graves_pct"] == 25.0
     assert r.loc["B", "taxa_graves_pct"] == 100.0
 
 
-def test_minimo_descarta_grupos_pequenos():
-    r = taxa_de_gravidade(_exemplo(), "grupo", minimo=3)
+def test_min_sample_descarta_grupos_pequenos():
+    r = severity_rate_by(_example(), "grupo", min_sample=3)
     assert r["grupo"].tolist() == ["A"]  # B tem apenas 2 incidentes
 
 
 def test_apenas_fault_severity_2_conta_como_grave():
     """Gravidade 1 ('poucas falhas') nao entra na conta de graves."""
     df = pd.DataFrame({"grupo": ["A", "A"], "fault_severity": [1, 1]})
-    assert taxa_de_gravidade(df, "grupo")["taxa_graves_pct"].iloc[0] == 0.0
+    assert severity_rate_by(df, "grupo")["taxa_graves_pct"].iloc[0] == 0.0
 
 
 # ---------------------------------------------------------------------------
 # Concordancia entre SQL e pandas -- o teste que evita numeros divergentes
 # ---------------------------------------------------------------------------
 @pytest.fixture(scope="module")
-def incidentes():
+def incidents():
     """Mesma consulta que o dashboard usa para carregar os dados."""
-    return consultar("""
+    return run_query("""
         SELECT i.incident_id, l.location_name, s.severity_type_name, i.fault_severity
         FROM incidents i
         JOIN locations      l ON i.location_id      = l.location_id
@@ -59,35 +59,35 @@ def incidentes():
     """)
 
 
-def test_pandas_concorda_com_sql_por_tipo_de_alerta(incidentes):
-    via_sql = (executar_consulta_nomeada("alerta_vs_gravidade")
+def test_pandas_concorda_com_sql_por_tipo_de_alerta(incidents):
+    via_sql = (run_named_query("alerta_vs_gravidade")
                .set_index("severity_type_name")[["incidentes", "graves", "taxa_graves_pct"]]
                .sort_index())
-    via_pandas = (taxa_de_gravidade(incidentes, "severity_type_name")
+    via_pandas = (severity_rate_by(incidents, "severity_type_name")
                   .set_index("severity_type_name")[["incidentes", "graves", "taxa_graves_pct"]]
                   .sort_index())
     pd.testing.assert_frame_equal(via_sql, via_pandas, check_dtype=False)
 
 
-def test_pandas_concorda_com_sql_por_localidade(incidentes):
+def test_pandas_concorda_com_sql_por_localidade(incidents):
     """A consulta localidades_criticas usa HAVING COUNT(*) >= 10 e LIMIT 10."""
-    via_sql = executar_consulta_nomeada("localidades_criticas")
-    via_pandas = (taxa_de_gravidade(incidentes, "location_name", minimo=10)
+    via_sql = run_named_query("localidades_criticas")
+    via_pandas = (severity_rate_by(incidents, "location_name", min_sample=10)
                   .set_index("location_name"))
 
-    for linha in via_sql.itertuples():
-        esperado = via_pandas.loc[linha.location_name]
-        assert linha.incidentes == esperado["incidentes"]
-        assert linha.graves == esperado["graves"]
-        assert linha.taxa_graves_pct == esperado["taxa_graves_pct"]
+    for row in via_sql.itertuples():
+        expected = via_pandas.loc[row.location_name]
+        assert row.incidentes == expected["incidentes"]
+        assert row.graves == expected["graves"]
+        assert row.taxa_graves_pct == expected["taxa_graves_pct"]
 
 
-def test_constante_de_exibicao_bate_com_o_banco(incidentes):
+def test_constante_de_exibicao_bate_com_o_banco(incidents):
     """
-    TAXA_BASE_PCT e' um numero fixo usado como linha de referencia nos
+    BASE_SEVERITY_RATE_PCT e' um numero fixo usado como linha de referencia nos
     graficos. Este teste garante que ele continua correspondendo ao dado real:
     se o dataset mudar, o teste quebra em vez de o grafico mentir.
     """
-    from src.metrics import TAXA_BASE_PCT, taxa_base
+    from src.metrics import BASE_SEVERITY_RATE_PCT, base_severity_rate
 
-    assert round(taxa_base(incidentes), 2) == TAXA_BASE_PCT
+    assert round(base_severity_rate(incidents), 2) == BASE_SEVERITY_RATE_PCT
