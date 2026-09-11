@@ -140,3 +140,32 @@ SELECT
 FROM volume_por_incidente
 GROUP BY fault_severity
 ORDER BY fault_severity;
+
+
+-- name: evento_recurso
+-- Pergunta: existem combinacoes de evento + recurso associadas a mais gravidade?
+--
+-- Um incidente tem varios eventos E varios recursos. Cruzando as duas pontes
+-- pelo incident_id, cada par (evento, recurso) de um incidente vira uma linha.
+-- Agrupando por esse par, COUNT(*) conta em quantos incidentes o par aparece.
+--
+-- HAVING COUNT(*) >= 50: mesma logica das outras analises -- combinacao com
+-- poucos incidentes produz taxa extrema sem significado.
+--
+-- Conceitos: dois JOINs entre pontes, GROUP BY por duas colunas, HAVING.
+SELECT
+    e.event_type_name,
+    r.resource_type_name,
+    COUNT(*) AS incidentes,
+    SUM(CASE WHEN i.fault_severity = 2 THEN 1 ELSE 0 END) AS graves,
+    ROUND(100.0 * SUM(CASE WHEN i.fault_severity = 2 THEN 1 ELSE 0 END)
+          / COUNT(*), 1) AS taxa_graves_pct
+FROM incident_events    AS ie
+JOIN incident_resources AS ir ON ie.incident_id = ir.incident_id
+JOIN incidents      AS i ON ie.incident_id      = i.incident_id
+JOIN event_types    AS e ON ie.event_type_id    = e.event_type_id
+JOIN resource_types AS r ON ir.resource_type_id = r.resource_type_id
+GROUP BY e.event_type_name, r.resource_type_name
+HAVING COUNT(*) >= 50
+ORDER BY taxa_graves_pct DESC
+LIMIT 10;

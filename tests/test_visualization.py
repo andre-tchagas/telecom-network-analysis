@@ -9,37 +9,35 @@ from __future__ import annotations
 import plotly.graph_objects as go
 import pytest
 
-from src.database import carregar_consultas
+from src.database import load_named_queries, run_named_query
 from src.visualization import (
-    AMOSTRA_MINIMA_CONFIAVEL,
-    CINZA,
-    CINZA_CLARO,
-    VERMELHO,
-    GRAFICOS,
-    _cor_por_taxa,
+    CHARTS,
+    GRAY,
+    LIGHT_GRAY,
+    RED,
+    RELIABLE_MIN_SAMPLE,
+    _color_for_rate,
 )
 
 
 def test_todo_grafico_aponta_para_uma_consulta_existente():
-    consultas = carregar_consultas()
-    for nome, (consulta, _) in GRAFICOS.items():
-        assert consulta in consultas, f"{nome} usa consulta inexistente: {consulta}"
+    queries = load_named_queries()
+    for name, (query_name, _) in CHARTS.items():
+        assert query_name in queries, f"{name} usa consulta inexistente: {query_name}"
 
 
-@pytest.mark.parametrize("nome", list(GRAFICOS))
-def test_grafico_e_construido_sem_erro(nome):
-    from src.database import executar_consulta_nomeada
-
-    consulta, funcao = GRAFICOS[nome]
-    fig = funcao(executar_consulta_nomeada(consulta))
+@pytest.mark.parametrize("name", list(CHARTS))
+def test_grafico_e_construido_sem_erro(name):
+    query_name, chart_fn = CHARTS[name]
+    fig = chart_fn(run_named_query(query_name))
     assert isinstance(fig, go.Figure)
-    assert fig.layout.title.text, f"{nome} ficou sem titulo"
+    assert fig.layout.title.text, f"{name} ficou sem titulo"
 
 
 def test_amostra_pequena_recebe_cor_apagada():
     """Uma taxa alta com poucos casos nao pode chamar mais atencao que um
     achado real. O resource_type 5 (100% com 4 incidentes) e' o caso."""
-    assert _cor_por_taxa(100.0, 4) == CINZA_CLARO
-    assert _cor_por_taxa(16.8, 4051) == VERMELHO   # acima da media, amostra boa
-    assert _cor_por_taxa(3.0, 3585) == CINZA       # abaixo da media, amostra boa
-    assert _cor_por_taxa(29.4, AMOSTRA_MINIMA_CONFIAVEL - 1) == CINZA_CLARO
+    assert _color_for_rate(100.0, 4) == LIGHT_GRAY
+    assert _color_for_rate(16.8, 4051) == RED   # acima da media, amostra boa
+    assert _color_for_rate(3.0, 3585) == GRAY   # abaixo da media, amostra boa
+    assert _color_for_rate(29.4, RELIABLE_MIN_SAMPLE - 1) == LIGHT_GRAY

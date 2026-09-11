@@ -1,6 +1,6 @@
 # Telecom Network Analysis
 
-> 🚧 **Projeto em andamento** — 7 de 8 etapas concluídas. Veja o [andamento](#andamento).
+> ✅ **Projeto concluído** — 8 de 8 etapas. Veja o [andamento](#andamento).
 
 Análise de incidentes e falhas de rede de uma operadora de telecomunicações,
 usando Python, Pandas, SQL e SQLite, com dashboard em Streamlit.
@@ -168,7 +168,7 @@ conclusões deste projeto são padrões estatísticos, nunca relações de causa
 
 ---
 
-## Resultados parciais
+## Resultados
 
 > Todos os números abaixo são calculados a partir dos dados, por
 > [`sql/analysis_queries.sql`](sql/analysis_queries.sql). Nenhum é estimado.
@@ -222,6 +222,18 @@ Sem corte mínimo, 14 localidades marcariam 100% de gravidade — **10 delas com
 O top 5 é **idêntico** nos cortes de 10 e de 30: o ranking é robusto e não
 depende do corte escolhido.
 
+### 5. Combinações de evento + recurso amplificam o risco
+
+![Combinações evento + recurso](reports/figures/06_evento_recurso.png)
+
+Cruzando as duas relações 1:N, a combinação `event_type 15 + resource_type 2`
+chega a **34,1%** de graves (123 incidentes) — acima do `event_type 15` sozinho
+(29,8%). O par carrega mais risco do que qualquer um dos dois isoladamente.
+
+Todas as combinações do topo do ranking envolvem `event_type 15` ou o
+`resource_type 8` — os mesmos protagonistas das análises 2 e 3, agora confirmados
+em conjunto.
+
 ---
 
 ## Andamento
@@ -235,19 +247,31 @@ depende do corte escolhido.
 | 5 | Análise + visualizações | ✅ concluído |
 | 6 | Dashboard Streamlit | ✅ concluído |
 | 7 | Testes + documentação | ✅ concluído |
-| 8 | Revisão final | ⬜ próximo |
+| 8 | Revisão final | ✅ concluído |
 
-**Concluído:** pipeline reproduzível de ponta a ponta, do CSV bruto até os
-gráficos; notebook de exploração; 7 consultas SQL analíticas; 5 visualizações;
-dashboard interativo; 61 testes automatizados.
+Pipeline reproduzível de ponta a ponta, do CSV bruto até os gráficos; notebook de
+exploração; 8 consultas SQL analíticas; 6 visualizações; dashboard interativo;
+64 testes automatizados.
 
-**A fazer:** revisão final da documentação.
+### Atualização — revisão final (checkpoint 8)
+
+Depois de uma revisão do projeto com olhar de recrutador técnico, quatro
+melhorias foram aplicadas:
+
+- **Idioma do código unificado em inglês.** Funções, constantes e variáveis usam
+  inglês (padrão de mercado); documentação, textos de tela e nomes de colunas
+  do SQL seguem em português. Regra: *código em inglês, dado e interface em
+  português*.
+- **Modelo de dados simplificado.** As três `dataclass` que apenas agrupavam
+  DataFrames deram lugar a dicionários — menos abstração para o mesmo resultado.
+- **Nova análise** de combinações evento + recurso (resultado 5 acima).
+- Config local de editor removida do versionamento.
 
 ---
 
 ## Dashboard
 
-![Dashboard Telecom Network Operations Analytics](reports/figures/06_dashboard.png)
+![Dashboard Telecom Network Operations Analytics](reports/figures/07_dashboard.png)
 
 ```bash
 streamlit run dashboard/app.py
@@ -297,7 +321,7 @@ abaixo, apagado quando a amostra é pequena demais para confiar.
 │   ├── metrics.py              a regra da taxa de gravidade, em um lugar só
 │   └── visualization.py        gráficos Plotly
 ├── reports/figures/            gráficos gerados (PNG)
-├── tests/                      61 testes (pytest)
+├── tests/                      64 testes (pytest)
 ├── run_pipeline.py             ponto de entrada
 ├── LEARNING_NOTES.md           notas de estudo do desenvolvedor
 └── requirements.txt
