@@ -9,11 +9,14 @@ Principio adotado: este modulo NAO toma decisoes analiticas.
     Essa separacao existe para que uma falha possa ser localizada: se o
     pipeline quebra aqui, o problema e' o arquivo de origem; se quebra
     depois, o problema e' a nossa regra.
+
+As tabelas trafegam pelo pipeline como um `dict[str, pd.DataFrame]` -- nome da
+tabela -> DataFrame. Um dict simples basta: as chaves sao conhecidas, o codigo
+e' pequeno, e nao ha ganho em envolver isso numa classe.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 
 import pandas as pd
@@ -34,35 +37,6 @@ RAW_DTYPES: dict[str, dict[str, str]] = {
     "resource_type": {"id": "int64", "resource_type": "string"},
     "log_feature": {"id": "int64", "log_feature": "string", "volume": "int64"},
 }
-
-
-@dataclass(frozen=True)
-class RawData:
-    """
-    Agrupa as cinco tabelas brutas usadas pelo pipeline.
-
-    Por que uma dataclass em vez de um dict:
-        - os nomes dos campos sao verificados pelo editor e pelo interpretador;
-        - `frozen=True` impede que uma etapa posterior substitua uma tabela
-          por engano, o que tornaria o pipeline nao reproduzivel;
-        - fica explicito, na assinatura das funcoes, o que entra e o que sai.
-    """
-
-    train: pd.DataFrame
-    severity_type: pd.DataFrame
-    event_type: pd.DataFrame
-    resource_type: pd.DataFrame
-    log_feature: pd.DataFrame
-
-    def as_dict(self) -> dict[str, pd.DataFrame]:
-        """Util para iterar sobre todas as tabelas (validacao, logging, testes)."""
-        return {
-            "train": self.train,
-            "severity_type": self.severity_type,
-            "event_type": self.event_type,
-            "resource_type": self.resource_type,
-            "log_feature": self.log_feature,
-        }
 
 
 def load_raw_table(name: str, raw_dir: Path = RAW_DIR) -> pd.DataFrame:
@@ -89,24 +63,26 @@ def load_raw_table(name: str, raw_dir: Path = RAW_DIR) -> pd.DataFrame:
     return df
 
 
-def load_raw_data(raw_dir: Path = RAW_DIR) -> RawData:
-    """Le as cinco tabelas usadas pelo pipeline e devolve o conjunto agrupado."""
+def load_raw_data(raw_dir: Path = RAW_DIR) -> dict[str, pd.DataFrame]:
+    """
+    Le as cinco tabelas usadas pelo pipeline.
+
+    Devolve {nome: DataFrame} com as chaves: train, severity_type, event_type,
+    resource_type, log_feature.
+    """
     logger.info("Lendo dataset bruto de %s", raw_dir)
-    tables = {name: load_raw_table(name, raw_dir) for name in RAW_FILES}
-    return RawData(**tables)
+    return {name: load_raw_table(name, raw_dir) for name in RAW_FILES}
 
 
-def validate_raw_data(raw: RawData) -> None:
+def validate_raw_data(raw: dict[str, pd.DataFrame]) -> None:
     """
     Verifica o contrato do dataset bruto. Levanta ValueError na primeira violacao.
 
     O que e' verificado e por que:
         1. Ausencia de nulos    -> a analise atual assume dado completo.
         2. `id` unico em train  -> e' a chave primaria do incidente.
-        3. Integridade referencial -> todo `id` das tabelas satelite precisa
-           existir em train OU em test. Como test nao e' carregado, checamos
-           o caso mais forte que ainda faz sentido: nenhum id de train pode
-           ficar sem correspondencia nas satelites.
+        3. Integridade referencial -> todo `id` de train precisa existir nas
+           tabelas satelite, senao um JOIN perderia incidentes em silencio.
         4. `volume` positivo    -> volume zero ou negativo nao tem significado.
 
     Isto e' uma barreira de regressao: se o dataset for substituido por uma
@@ -115,31 +91,26 @@ def validate_raw_data(raw: RawData) -> None:
     logger.info("Validando integridade do dataset bruto")
 
     # 1. Nulos
-    for name, df in raw.as_dict().items():
+    for name, df in raw.items():
         nulls = df.isna().sum()
         if nulls.any():
             offenders = nulls[nulls > 0].to_dict()
             raise ValueError(f"Valores nulos encontrados em {name!r}: {offenders}")
 
     # 2. Chave primaria de train
-    if raw.train["id"].duplicated().any():
-        n = int(raw.train["id"].duplicated().sum())
+    if raw["train"]["id"].duplicated().any():
+        n = int(raw["train"]["id"].duplicated().sum())
         raise ValueError(f"train.csv possui {n} id(s) duplicado(s); id deve ser unico.")
 
     # 2b. severity_type e' 1:1 com o incidente
-    if raw.severity_type["id"].duplicated().any():
+    if raw["severity_type"]["id"].duplicated().any():
         raise ValueError("severity_type.csv deveria ter um unico registro por id.")
 
     # 3. Integridade referencial: todo incidente de train aparece nas satelites
-    train_ids = set(raw.train["id"])
-    satellites = {
-        "severity_type": raw.severity_type,
-        "event_type": raw.event_type,
-        "resource_type": raw.resource_type,
-        "log_feature": raw.log_feature,
-    }
-    for name, df in satellites.items():
-        missing = train_ids - set(df["id"])
+    train_ids = set(raw["train"]["id"])
+    satellites = ("severity_type", "event_type", "resource_type", "log_feature")
+    for name in satellites:
+        missing = train_ids - set(raw[name]["id"])
         if missing:
             raise ValueError(
                 f"{len(missing)} incidente(s) de train sem registro em {name!r}. "
@@ -147,12 +118,12 @@ def validate_raw_data(raw: RawData) -> None:
             )
 
     # 4. Dominio de valores
-    invalid_volume = int((raw.log_feature["volume"] <= 0).sum())
+    invalid_volume = int((raw["log_feature"]["volume"] <= 0).sum())
     if invalid_volume:
         raise ValueError(f"log_feature.csv possui {invalid_volume} linha(s) com volume <= 0.")
 
     valid_targets = {0, 1, 2}
-    found_targets = set(raw.train["fault_severity"].unique().tolist())
+    found_targets = set(raw["train"]["fault_severity"].unique().tolist())
     if not found_targets <= valid_targets:
         raise ValueError(
             f"fault_severity fora do dominio esperado {valid_targets}: {found_targets}"

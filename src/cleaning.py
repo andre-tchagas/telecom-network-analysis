@@ -7,6 +7,10 @@ toma as **decisões analíticas** do projeto:
     1. recortar o universo para os 7.381 incidentes rotulados;
     2. converter as categorias de texto ("location 118") para inteiro (118).
 
+Entra e sai um `dict[str, pd.DataFrame]`. As tabelas resultantes usam
+`incident_id` como chave e identificadores de categoria já numéricos, prontos
+para virar chave estrangeira no SQLite.
+
 Nota de honestidade
 -------------------
 Este módulo é pequeno de propósito. O dataset Telstra chega sem valores
@@ -19,12 +23,9 @@ universo, e é exatamente isso que está aqui.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import pandas as pd
 
 from src.config import get_logger
-from src.data_loader import RawData
 
 logger = get_logger("cleaning")
 
@@ -38,31 +39,6 @@ CATEGORY_PREFIXES = {
     "resource_type": "resource_type",
     "log_feature": "feature",
 }
-
-
-@dataclass(frozen=True)
-class CleanData:
-    """
-    Dataset recortado no universo rotulado, com categorias já numéricas.
-
-    Todas as tabelas usam `incident_id` como chave, e os identificadores de
-    categoria são inteiros -- prontos para virar chave estrangeira no SQLite.
-    """
-
-    incidents: pd.DataFrame      # incident_id, location_id, fault_severity
-    incident_severity: pd.DataFrame   # incident_id, severity_type_id
-    incident_events: pd.DataFrame     # incident_id, event_type_id
-    incident_resources: pd.DataFrame  # incident_id, resource_type_id
-    incident_log_features: pd.DataFrame  # incident_id, log_feature_id, volume
-
-    def as_dict(self) -> dict[str, pd.DataFrame]:
-        return {
-            "incidents": self.incidents,
-            "incident_severity": self.incident_severity,
-            "incident_events": self.incident_events,
-            "incident_resources": self.incident_resources,
-            "incident_log_features": self.incident_log_features,
-        }
 
 
 def extract_category_id(series: pd.Series, prefix: str) -> pd.Series:
@@ -83,18 +59,18 @@ def extract_category_id(series: pd.Series, prefix: str) -> pd.Series:
         produziria NaN silenciosamente e o incidente sumiria dos JOINs sem
         nenhum aviso. A validação transforma esse caso em erro imediato.
     """
-    padrao = rf"^{prefix} \d+$"
-    invalidas = ~series.str.fullmatch(padrao)
-    if invalidas.any():
-        exemplos = series[invalidas].unique()[:5].tolist()
+    pattern = rf"^{prefix} \d+$"
+    invalid = ~series.str.fullmatch(pattern)
+    if invalid.any():
+        examples = series[invalid].unique()[:5].tolist()
         raise ValueError(
-            f"{int(invalidas.sum())} valor(es) fora do formato '{prefix} <numero>'. "
-            f"Exemplos: {exemplos}"
+            f"{int(invalid.sum())} valor(es) fora do formato '{prefix} <numero>'. "
+            f"Exemplos: {examples}"
         )
     return series.str.removeprefix(f"{prefix} ").astype("int64")
 
 
-def clean_raw_data(raw: RawData) -> CleanData:
+def clean_raw_data(raw: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
     """
     Aplica o recorte de universo e a conversão de categorias.
 
@@ -103,19 +79,23 @@ def clean_raw_data(raw: RawData) -> CleanData:
         existe somente ali. Os 11.171 incidentes de `test.csv` eram o conjunto
         oculto de avaliação da competição Kaggle e nunca tiveram o gabarito
         publicado, portanto não respondem nenhuma das perguntas de negócio.
+
+    Devolve {nome: DataFrame} com as chaves: incidents, incident_severity,
+    incident_events, incident_resources, incident_log_features.
     """
-    train_ids = set(raw.train["id"])
+    train_ids = set(raw["train"]["id"])
     logger.info("Recortando universo para os %d incidentes rotulados", len(train_ids))
 
     # --- Fato: um registro por incidente -------------------------------------
     incidents = pd.DataFrame({
-        "incident_id": raw.train["id"],
-        "location_id": extract_category_id(raw.train["location"], CATEGORY_PREFIXES["location"]),
-        "fault_severity": raw.train["fault_severity"],
+        "incident_id": raw["train"]["id"],
+        "location_id": extract_category_id(raw["train"]["location"],
+                                           CATEGORY_PREFIXES["location"]),
+        "fault_severity": raw["train"]["fault_severity"],
     })
 
     # --- Severidade do alerta: 1:1 com o incidente ---------------------------
-    sev = raw.severity_type[raw.severity_type["id"].isin(train_ids)]
+    sev = raw["severity_type"][raw["severity_type"]["id"].isin(train_ids)]
     incident_severity = pd.DataFrame({
         "incident_id": sev["id"].to_numpy(),
         "severity_type_id": extract_category_id(
@@ -124,7 +104,7 @@ def clean_raw_data(raw: RawData) -> CleanData:
     })
 
     # --- Relações 1:N --------------------------------------------------------
-    ev = raw.event_type[raw.event_type["id"].isin(train_ids)]
+    ev = raw["event_type"][raw["event_type"]["id"].isin(train_ids)]
     incident_events = pd.DataFrame({
         "incident_id": ev["id"].to_numpy(),
         "event_type_id": extract_category_id(
@@ -132,7 +112,7 @@ def clean_raw_data(raw: RawData) -> CleanData:
         ).to_numpy(),
     })
 
-    res = raw.resource_type[raw.resource_type["id"].isin(train_ids)]
+    res = raw["resource_type"][raw["resource_type"]["id"].isin(train_ids)]
     incident_resources = pd.DataFrame({
         "incident_id": res["id"].to_numpy(),
         "resource_type_id": extract_category_id(
@@ -140,7 +120,7 @@ def clean_raw_data(raw: RawData) -> CleanData:
         ).to_numpy(),
     })
 
-    log = raw.log_feature[raw.log_feature["id"].isin(train_ids)]
+    log = raw["log_feature"][raw["log_feature"]["id"].isin(train_ids)]
     incident_log_features = pd.DataFrame({
         "incident_id": log["id"].to_numpy(),
         "log_feature_id": extract_category_id(
@@ -149,21 +129,21 @@ def clean_raw_data(raw: RawData) -> CleanData:
         "volume": log["volume"].to_numpy(),
     })
 
-    clean = CleanData(
-        incidents=incidents.reset_index(drop=True),
-        incident_severity=incident_severity,
-        incident_events=incident_events,
-        incident_resources=incident_resources,
-        incident_log_features=incident_log_features,
-    )
+    clean = {
+        "incidents": incidents.reset_index(drop=True),
+        "incident_severity": incident_severity,
+        "incident_events": incident_events,
+        "incident_resources": incident_resources,
+        "incident_log_features": incident_log_features,
+    }
 
-    for nome, df in clean.as_dict().items():
-        logger.info("  %-22s -> %6d linhas", nome, len(df))
+    for name, df in clean.items():
+        logger.info("  %-22s -> %6d linhas", name, len(df))
 
     return clean
 
 
-def validate_clean_data(clean: CleanData) -> None:
+def validate_clean_data(clean: dict[str, pd.DataFrame]) -> None:
     """
     Verifica que a limpeza não corrompeu nem perdeu dado.
 
@@ -171,36 +151,33 @@ def validate_clean_data(clean: CleanData) -> None:
     esta checa o *resultado da nossa transformação*. É a diferença entre
     "o dado que recebi está íntegro?" e "eu estraguei o dado?".
     """
-    n_incidentes = len(clean.incidents)
+    n_incidents = len(clean["incidents"])
 
-    if clean.incidents["incident_id"].duplicated().any():
+    if clean["incidents"]["incident_id"].duplicated().any():
         raise ValueError("incidents possui incident_id duplicado.")
 
-    if len(clean.incident_severity) != n_incidentes:
+    if len(clean["incident_severity"]) != n_incidents:
         raise ValueError(
             f"incident_severity deveria ter 1 linha por incidente "
-            f"({n_incidentes}), tem {len(clean.incident_severity)}."
+            f"({n_incidents}), tem {len(clean['incident_severity'])}."
         )
 
-    ids = set(clean.incidents["incident_id"])
-    pontes = {
-        "incident_events": clean.incident_events,
-        "incident_resources": clean.incident_resources,
-        "incident_log_features": clean.incident_log_features,
-    }
-    for nome, df in pontes.items():
-        orfaos = set(df["incident_id"]) - ids
-        if orfaos:
-            raise ValueError(f"{nome} referencia {len(orfaos)} incidente(s) inexistente(s).")
+    ids = set(clean["incidents"]["incident_id"])
+    bridges = ("incident_events", "incident_resources", "incident_log_features")
+    for name in bridges:
+        df = clean[name]
+        orphans = set(df["incident_id"]) - ids
+        if orphans:
+            raise ValueError(f"{name} referencia {len(orphans)} incidente(s) inexistente(s).")
         # As pontes existem para representar relações N:N; um par repetido
         # significaria dado duplicado e inflaria qualquer contagem.
-        chave = [c for c in df.columns if c != "volume"]
-        if df.duplicated(subset=chave).any():
-            raise ValueError(f"{nome} possui pares {chave} duplicados.")
+        key = [c for c in df.columns if c != "volume"]
+        if df.duplicated(subset=key).any():
+            raise ValueError(f"{name} possui pares {key} duplicados.")
 
-    for nome, df in clean.as_dict().items():
+    for name, df in clean.items():
         if df.isna().any().any():
-            raise ValueError(f"{nome} contém valores nulos após a limpeza.")
+            raise ValueError(f"{name} contém valores nulos após a limpeza.")
 
     logger.info("Validação da limpeza OK: %d incidentes, sem órfãos e sem duplicatas",
-                n_incidentes)
+                n_incidents)
