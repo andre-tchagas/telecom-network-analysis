@@ -40,3 +40,6 @@ desktop.ini
 
 # Especificacao do projeto (uso local, nao publicado)
 CLAUDE.md
+
+# Config local de editor
+.claude/launch.json
